@@ -24,8 +24,8 @@ ISSUE_DATE = 'WEDNESDAY, 25 NOVEMBER 2026'
 
 # Each brief carries its reporting credit in the source edition.
 FRONT = (
-    ('JIUQUAN / SPACE', ('CHINA TO LAUNCH', 'FIRST PAKISTANI', 'ASTRONAUT'),
-     ('Shenzhou-24 is due off from Jiuquan.', 'A Pakistani joins the Tiangong crew.'),
+    ('JIUQUAN / SPACE', ('CHINA TO LAUNCH', 'PAKISTANI INTO', 'ORBIT'),
+     ('Shenzhou-24 is due off from Jiuquan.', 'A first orbital flight for Pakistan.'),
      'China Manned Space Agency / Associated Press'),
     ('EUROPE / DIPLOMACY', ('UKRAINE SEEKS', '4-WAY PEACE TALKS'),
      ('Kyiv seeks a seat for Europe', 'alongside the U.S. and Russia.', 'Moscow questions the format.'),
@@ -176,6 +176,23 @@ GRIDS = {
 }
 
 
+DISPLAY_FORMS = {
+    'A': '..#../.#.#./#...#/#...#/#####/#...#/#...#',
+    'C': '.###./#...#/#..../#..../#..../#...#/.###.',
+    'G': '.###./#...#/#..../#.###/#...#/#...#/.###.',
+    'M': '#....#/##..##/#.##.#/#.##.#/#....#/#....#/#....#',
+    'N': '#...#/##..#/##..#/#.#.#/#..##/#..##/#...#',
+    'S': '.###./#...#/#..../.###./....#/#...#/.###.',
+    'T': '#####/..#../..#../..#../..#../..#../..#..',
+    'U': '#...#/#...#/#...#/#...#/#...#/##.##/.###.',
+    'W': '#.....#/#.....#/#.....#/#..#..#/#.#.#.#/##...##/#.....#',
+}
+DISPLAY_GRIDS = {
+    letter: tuple(tuple(mark == '#' for mark in row) for row in form.split('/'))
+    for letter, form in DISPLAY_FORMS.items()
+}
+
+
 def advances(text, height, width_scale):
     steps = []
     for letter in text:
@@ -204,8 +221,10 @@ def smooth_sample(grid, x, y):
 
 
 @lru_cache(maxsize=512)
-def impression(letter, height, width, strong):
+def impression(letter, height, width, strong, display):
     grid = GRIDS.get(letter, GRIDS['?'])
+    if display:
+        grid = DISPLAY_GRIDS.get(letter, grid)
     rows = round(len(grid) * height / 7)
     dots = []
     threshold = 0.36 if strong else 0.46
@@ -223,9 +242,9 @@ def impression(letter, height, width, strong):
 
 
 @lru_cache(maxsize=512)
-def ink_fringe(letter, height, width, strong):
+def ink_fringe(letter, height, width, strong, display):
     """Find open pixels just below or to the right of a solid stroke."""
-    dots = impression(letter, height, width, strong)
+    dots = impression(letter, height, width, strong, display)
     occupied = {(x, y) for x, y, _ in dots}
     fringe = set()
     for x, y, coverage in dots:
@@ -234,7 +253,8 @@ def ink_fringe(letter, height, width, strong):
     return tuple(sorted(fringe - occupied))
 
 
-def print_type(page, x, y, text, height, color, *, strong=False, limit=None, width_scale=0.8):
+def print_type(page, x, y, text, height, color, *, strong=False, limit=None,
+               width_scale=0.8, display=False):
     if limit is not None:
         while measure(text, height, width_scale) > limit and height > 10:
             height -= 1
@@ -246,13 +266,13 @@ def print_type(page, x, y, text, height, color, *, strong=False, limit=None, wid
         if height >= 17:
             spread, spread_range = (24, 22) if height >= 30 else (11, 10)
             spread += pressure * spread_range // 30
-            for dx, dy in ink_fringe(letter, height, width, strong):
+            for dx, dy in ink_fringe(letter, height, width, strong, display):
                 page.ink(x + dx, top + dy, color, spread)
 
         # Small type keeps nearly full pressure even on the lightest sort.
         variation = 30 if height >= 30 else 20
         strength = 255 - (30 - pressure) * variation // 30
-        for dx, dy, coverage in impression(letter, height, width, strong):
+        for dx, dy, coverage in impression(letter, height, width, strong, display):
             opacity = strength
             if height >= 30:
                 streak = ((dy // 3 * 11) ^ (dx // 5 * 7) ^ pressure) % 13
@@ -529,7 +549,7 @@ def front_story(page):
         print_type(page, left + 1, 140, label, 14, RUST, strong=True)
         illustration(page, left, 157, width)
         for y, row in zip(headline_rows, headline):
-            print_type(page, left, y, row, height, INK, strong=True, limit=width)
+            print_type(page, left, y, row, height, INK, strong=True, limit=width, display=True)
         for y, row in zip(deck_rows, deck):
             print_type(page, left + 1, y, row, 15, BODY, limit=width - 2)
     press_rule(page, EDGE, RIGHT, 388, INK, 3)
